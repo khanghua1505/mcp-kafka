@@ -14,9 +14,7 @@ class KafkaCluster:
         self.core = core
 
     def describe_cluster(self):
-        """Fetch cluster-wide metadata such as the list of brokers, the controller ID,
-        and the cluster ID.
-        """
+        """Fetch cluster-wide metadata such as the list of brokers, the controller ID, and the cluster ID."""
 
         return self.core.kafka_admin_client.describe_cluster()
 

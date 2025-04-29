@@ -1,5 +1,6 @@
 
 """MCP Kafka tool handlers."""
+from typing import List
 
 from loguru import logger
 from fastmcp import Context
@@ -78,7 +79,6 @@ async def create_topic(
     replication_factor: int,
     if_not_exists: bool,
     configs: dict,
-    dry_run: bool,
 ):
     """Create a new topic.
 
@@ -97,7 +97,6 @@ async def create_topic(
         - `min.insync.replicas`
     - Ensure that the replication factor is greater than or equal to `min.insync.replicas`.
     - For fault tolerance, always set `replication.factor >= 3` and `min.insync.replicas >= 2`.
-    - Use `dry_run=True` to validate the topic creation without actually creating the topic.
 
     Arguments:
         ctx: MCP context
@@ -142,8 +141,6 @@ async def create_topic(
                 segment.jitter.ms
                 segment.ms
                 unclean.leader.election.enable
-        dry_run (bool): If set, the action will only validate the topic creation
-            without actually creating the topic.
     """
     kafka_topic = KafkaTopic(CoreManager.get_core())
 
@@ -154,7 +151,6 @@ async def create_topic(
             replication_factor,
             if_not_exists,
             configs,
-            dry_run,
         )
 
         return {
@@ -200,7 +196,7 @@ async def list_topics(ctx: Context):
         }
 
 
-async def describe_topic(ctx: Context, topic: str):
+async def describe_topics(ctx: Context, topics: List[str], include_topic_configs: bool = False):
     """Fetch metadata for the specified topic.
 
     ## Usage
@@ -209,7 +205,8 @@ async def describe_topic(ctx: Context, topic: str):
 
     Arguments:
         ctx: MCP context
-        topic (str): The name of the topic to describe.
+        topics: List of topics to describe. If None, all topics will be described.
+        include_topic_configs (bool): If True, includes topic configurations in the response.
 
     Returns:
         A dictionary containing the topic descriptions.
@@ -217,7 +214,7 @@ async def describe_topic(ctx: Context, topic: str):
     kafka_topic = KafkaTopic(CoreManager.get_core())
 
     try:
-        response = kafka_topic.describe_topics([topic])
+        response = kafka_topic.describe_topics(topics, include_topic_configs)
 
         return {
             'data': response,
@@ -232,60 +229,22 @@ async def describe_topic(ctx: Context, topic: str):
         }
 
 
-async def describe_topic_config(ctx: Context, topic: str):
-    """Fetch metadata for the specified topic.
-
-    ## Usage
-
-    Fetch metadata for the specified topic.
-
-    Arguments:
-        ctx: MCP context
-        topic (str): The name of the topic to describe.
-
-    Returns:
-        A dictionary containing the topic descriptions.
-    """
-    kafka_topic = KafkaTopic(CoreManager.get_core())
-
-    try:
-        response = kafka_topic.describe_topic_config(topic)
-
-        return {
-            'data': response,
-        }
-    except Exception as e:
-        error_msg = f'Error describing topic config: {str(e)}'
-        logger.error(error_msg)
-        await ctx.error(error_msg)
-
-        return {
-            'error': error_msg,
-        }
-
-
-async def update_topic(ctx: Context, topic: str, configs: dict, dry_run: bool):
+async def update_topic(ctx: Context, topic: str, configs: dict):
     """Update the specified topic.
 
     ## Usage
 
     Update the specified topic.
 
-    ## Recommended Usage
-
-    - use `dry_run=True` to validate the topic update without actually updating the topic.
-
     Arguments:
         ctx: MCP context
         topic (str): The name of the topic to update.
         configs (dict): A dictionary of configurations to update for the topic.
-        dry_run (bool): If set, the action will only validate the topic update
-            without actually updating the topic.
     """
     kafka_topic = KafkaTopic(CoreManager.get_core())
 
     try:
-        response = kafka_topic.alter_topic(topic, configs, dry_run)
+        response = kafka_topic.alter_topic(topic, configs)
 
         return {
             'data': response,
@@ -300,7 +259,7 @@ async def update_topic(ctx: Context, topic: str, configs: dict, dry_run: bool):
         }
 
 
-async def delete_topic(ctx: Context, topic: str, dry_run: bool):
+async def delete_topic(ctx: Context, topic: str):
     """Delete the specified topic.
 
     ## Usage
@@ -314,13 +273,11 @@ async def delete_topic(ctx: Context, topic: str, dry_run: bool):
     Arguments:
         ctx: MCP context
         topic (str): The name of the topic to delete.
-        dry_run (bool): If set, the action will only validate the topic deletion
-            without actually deleting the topic.
     """
     kafka_topic = KafkaTopic(CoreManager.get_core())
 
     try:
-        response = kafka_topic.delete_topics([topic], dry_run)
+        response = kafka_topic.delete_topics([topic])
 
         return {
             'data': response,
@@ -400,7 +357,7 @@ async def list_consumer_group_offsets(ctx: Context, group_id: str):
         }
 
 
-async def describe_consumer_group(ctx: Context, group_id: str):
+async def describe_consumer_groups(ctx: Context, group_ids: List[str]):
     """Describe a consumer group.
 
     ## Usage
@@ -409,7 +366,7 @@ async def describe_consumer_group(ctx: Context, group_id: str):
 
     Arguments:
         ctx: MCP context
-        group_id (str): The ID of the consumer group to describe.
+        group_ids (str): The list of consumer group IDs to describe.
 
     Returns:
         A dictionary containing the consumer group description.
@@ -417,7 +374,7 @@ async def describe_consumer_group(ctx: Context, group_id: str):
     kafka_cluster = KafkaConsumer(CoreManager.get_core())
 
     try:
-        response = kafka_cluster.describe_consumer_group(group_id)
+        response = kafka_cluster.describe_consumer_groups(group_ids)
 
         return {
             'data': response,
@@ -432,12 +389,12 @@ async def describe_consumer_group(ctx: Context, group_id: str):
         }
 
 
-async def delete_consumer_groups(ctx: Context, group_id: str):
-    """Delete consumer groups.
+async def delete_consumer_group(ctx: Context, group_id: str):
+    """Delete a consumer group.
 
     ## Usage
 
-    Delete consumer groups.
+    Delete a consumer group.
 
     Arguments:
         ctx: MCP context
@@ -449,7 +406,7 @@ async def delete_consumer_groups(ctx: Context, group_id: str):
     kafka_cluster = KafkaConsumer(CoreManager.get_core())
 
     try:
-        response = kafka_cluster.delete_consumer_groups(group_id)
+        response = kafka_cluster.delete_consumer_group(group_id)
 
         return {
             'data': response,

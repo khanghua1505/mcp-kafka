@@ -2,7 +2,6 @@ from typing import List
 
 from loguru import logger
 from kafka.admin import NewTopic, ConfigResourceType, ConfigResource
-from kafka.protocol.admin import DeleteTopicsResponse_v3, AlterConfigsResponse_v1
 
 from mcp_kafka.core import Core
 
@@ -25,7 +24,6 @@ class KafkaTopic:
         replication_factor: int = 3,
         if_not_exists: bool = False,
         configs: dict = None,
-        dry_run: bool = False,
     ):
         """Create a new topic."""
         if if_not_exists:
@@ -41,8 +39,7 @@ class KafkaTopic:
             topic_configs=configs,
         )
 
-        response = self._core.kafka_admin_client.create_topics(
-            [topic], validate_only=dry_run)
+        response = self._core.kafka_admin_client.create_topics([topic])
         logger.debug('Create topic response:')
         logger.debug(response)
 
@@ -52,54 +49,28 @@ class KafkaTopic:
         """List all topics in the Kafka cluster."""
         return self._core.kafka_admin_client.list_topics()
 
-    def describe_topics(self, topics: List[str]):
+    def describe_topics(self,  topic_names: List[str],  include_topic_configs: bool = False):
         """Fetch metadata for the specified topics or all topics if None."""
-        return self._core.kafka_admin_client.describe_topics(topics)
+        topics = self._core.kafka_admin_client.describe_topics(topic_names)
 
-    def describe_topic_config(self, topic: str):
-        """Fetch metadata for the specified topic."""
+        if include_topic_configs:
+            for topic in topics:
+                response = self._core.kafka_admin_client.describe_configs(
+                    [ConfigResource(resource_type=ConfigResourceType.TOPIC, name=topic['topic'])])
+                topic['configs'] = response[0]
 
-        response = self._core.kafka_admin_client.describe_configs([
-            ConfigResource(
-                resource_type=ConfigResourceType.TOPIC,
-                name=topic,
-            ),
-        ])
+        return topics
 
-        return response[0]
-
-    def delete_topics(self, topics: List[str], dry_run: bool = False):
+    def delete_topics(self, topics: List[str]):
         """Delete the specified topics."""
-        if dry_run:
-            response = DeleteTopicsResponse_v3(
-                throttle_time_ms=0,
-                topic_error_codes=[(topic, 0) for topic in topics],
-            )
-            return response
-
         response = self._core.kafka_admin_client.delete_topics(topics)
         logger.debug('Delete topics response:')
         logger.debug(response)
 
         return response
 
-    def alter_topic(self, name: str, configs: dict, dry_run: bool = False):
+    def alter_topic(self, name: str, configs: dict):
         """Alter the specified topic."""
-        if dry_run:
-            existing_topics = self._core.kafka_admin_client.describe_topics([
-                                                                            name])
-            if name not in existing_topics:
-                return AlterConfigsResponse_v1(
-                    throttle_time_ms=0,
-                    resources=[
-                        (3, f"The topic '{name}' does not exist.", ConfigResourceType.TOPIC, name)]
-                )
-
-            return AlterConfigsResponse_v1(
-                throttle_time_ms=0,
-                resources=[(0, None, ConfigResourceType.TOPIC, name)]
-            )
-
         config = ConfigResource(
             resource_type=ConfigResourceType.TOPIC,
             name=name,
