@@ -358,15 +358,15 @@ async def list_consumer_group_offsets(ctx: Context, group_id: str):
 
 
 async def describe_consumer_groups(ctx: Context, group_ids: List[str]):
-    """Describe a consumer group.
+    """Describe a list of consumer groups.
 
     ## Usage
 
-    Describe a consumer group.
+    Describe a list of consumer groups.
 
     Arguments:
         ctx: MCP context
-        group_ids (str): The list of consumer group IDs to describe.
+        group_ids: The list of consumer group IDs to describe.
 
     Returns:
         A dictionary containing the consumer group description.
