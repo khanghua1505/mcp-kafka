@@ -4,4 +4,9 @@ version = "0.1.0"
 description = "A Model Context Protocol (MCP) server for performing Kafka client operations from AI assistants."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastmcp>=2.2.5",
+    "kafka-python>=2.1.5",
+    "loguru>=0.7.3",
+    "mcp[cli]>=1.6.0",
+]
