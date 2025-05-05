@@ -205,7 +205,7 @@ async def describe_topics(ctx: Context, topics: List[str], include_topic_configs
 
     Arguments:
         ctx: MCP context
-        topics: List of topics to describe. If None, all topics will be described.
+        topics: List of topics to describe.
         include_topic_configs (bool): If True, includes topic configurations in the response.
 
     Returns:
@@ -266,10 +266,6 @@ async def delete_topic(ctx: Context, topic: str):
 
     Delete the specified topic.
 
-    ## Recommended Usage
-
-    - use `dry_run=True` to validate the topic deletion without actually deleting the topic.
-
     Arguments:
         ctx: MCP context
         topic (str): The name of the topic to delete.
@@ -302,7 +298,7 @@ async def list_consumer_groups(ctx: Context, broker_ids=None):
     Arguments:
         ctx: MCP context
         broker_ids ([int], optional): A list of broker node_ids to query for consumer groups.
-            If set to None, will query all brokers in the cluster.
+            If not set, will query all brokers in the cluster.
 
     Returns:
         A list of consumer groups.
@@ -357,7 +353,7 @@ async def list_consumer_group_offsets(ctx: Context, group_id: str):
         }
 
 
-async def describe_consumer_groups(ctx: Context, group_ids: List[str]):
+async def describe_consumer_groups(ctx: Context, group_ids: List[str] = None):
     """Describe a list of consumer groups.
 
     ## Usage
