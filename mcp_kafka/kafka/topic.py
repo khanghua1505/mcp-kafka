@@ -1,3 +1,4 @@
+import itertools
 from typing import List
 
 from loguru import logger
@@ -51,15 +52,17 @@ class KafkaTopic:
 
     def describe_topics(self,  topic_names: List[str],  include_topic_configs: bool = False):
         """Fetch metadata for the specified topics or all topics if None."""
-        topics = self._core.kafka_admin_client.describe_topics(topic_names)
+        response = []
+        for topic_names_chunk in itertools.batched(topic_names, 10):
+            topics = self._core.kafka_admin_client.describe_topics(topic_names_chunk)
+            if include_topic_configs:
+                for topic in topics:
+                    response = self._core.kafka_admin_client.describe_configs(
+                        [ConfigResource(resource_type=ConfigResourceType.TOPIC, name=topic['topic'])])
+                    topic['configs'] = response[0]
+            response += topics
 
-        if include_topic_configs:
-            for topic in topics:
-                response = self._core.kafka_admin_client.describe_configs(
-                    [ConfigResource(resource_type=ConfigResourceType.TOPIC, name=topic['topic'])])
-                topic['configs'] = response[0]
-
-        return topics
+        return response
 
     def delete_topics(self, topics: List[str]):
         """Delete the specified topics."""
