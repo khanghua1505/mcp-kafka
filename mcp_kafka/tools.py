@@ -16,12 +16,24 @@ def list_clusters(ctx: Context):
 
     List all Kafka clusters.
 
+    Arguments:
+        ctx: MCP context
+
     Returns:
-        A list of cluster names.
+        A list of Kafka clusters with their names and descriptions.
     """
     core = CoreManager.get_core()
+    result = []
+
+    for cluster in core.clusters:
+        cluster_config = core.get_cluster_config(cluster)
+        result.append({
+            'cluster_name': cluster,
+            'description': cluster_config.description
+        })
+
     return {
-        'data': core.clusters,
+        'data': result
     }
 
 
@@ -393,6 +405,7 @@ async def describe_consumer_groups(ctx: Context, cluster_name: str, group_ids: L
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to describe consumer groups from.
         group_ids: The list of consumer group IDs to describe.
 
     Returns:
@@ -425,6 +438,7 @@ async def delete_consumer_group(ctx: Context, cluster_name: str, group_id: str):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to delete the consumer group from.
         group_id (str): The ID of the consumer group to delete.
 
     Returns:

@@ -3,7 +3,7 @@
 
 import argparse
 import copy
-from typing import List
+from typing import List, Union
 
 import yaml
 from pydantic import BaseModel, Field
@@ -19,39 +19,50 @@ class SSLConfig(BaseModel):
         keyfile (str): Path to the key file.
     """
 
-    ca_file: str = Field(default=None)
+    cafile: str = Field(default=None)
     certfile: str = Field(default=None)
     keyfile: str = Field(default=None)
 
 
-class ClusterConfig(BaseModel):
-    """Cluster configuration.
+class SALSConfig(BaseModel):
+    """SASL configuration.
+
     Attributes:
-        bootstrap_servers (List[str]): List of bootstrap servers.
-        ssl_cafile (str): Path to the CA file.
-        ssl_certfile (str): Path to the certificate file.
-        ssl_keyfile (str): Path to the key file.
-        security_protocol (str): Security protocol.
-        sasl_mechanism (str): SASL mechanism.
-        sasl_plain_username (str): SASL plain username.
-        sasl_plain_password (str): SASL plain password.
+        mechanism (str): SASL mechanism.
+        username (str): SASL username.
+        password (str): SASL password.
     """
 
-    bootstrap_servers: List[str] = Field()
+    mechanism: str = Field(default=None)
+    username: str = Field(default=None)
+    password: str = Field(default=None)
+
+
+class KafkaClusterConfig(BaseModel):
+    """Cluster configuration.
+
+    Attributes:
+        description (str): Description of the cluster.
+        bootstrap_servers (Union[str, List[str]]): Bootstrap servers for the cluster.
+        ssl (SSLConfig): SSL configuration.
+        security_protocol (str): Security protocol.
+        sasl (SALSConfig): SASL configuration.
+    """
+
+    description: str = Field(default='')
+    bootstrap_servers: Union[str, List[str]] = Field()
     ssl: SSLConfig = Field(default={})
     security_protocol: str = Field(default='PLAINTEXT')
-    sasl_mechanism: str = Field(default=None)
-    sasl_plain_username: str = Field(default=None)
-    sasl_plain_password: str = Field(default=None)
+    sasl: SALSConfig = Field(default={})
 
 
 class KafkaClustersConfig(BaseModel):
     """Kafka clusters configuration.
 
     Attributes:
-        clusters (dict[str, ClusterConfig]): Dictionary of cluster configurations.
+        clusters (dict[str, KafkaClusterConfig]): Dictionary of cluster configurations.
     """
-    clusters: dict[str, ClusterConfig] = Field(default={})
+    clusters: dict[str, KafkaClusterConfig] = Field(default={})
 
 
 class Core:
@@ -60,12 +71,6 @@ class Core:
     Keyword Arguments:
         use_sse (bool): Whether to use SSE transport. Defaults to False.
         port (int): Port to run the server on. Defaults to 8888.
-        bootstrap_servers: 'host[:port]' string (or list of 'host[:port]'
-            strings) that the consumer should contact to bootstrap initial
-            cluster metadata. This does not have to be the full node list.
-            It just needs to have at least one broker that will respond to a
-            Metadata API Request. Default port is 9092. If no servers are
-            specified, will default to localhost:9092.
         clusters_config_file: Path to the configuration file for Kafka clusters.
             File format:
                 ```yaml
@@ -77,9 +82,10 @@ class Core:
                             certfile: path/to/cert.pem
                             keyfile: path/to/key.pem
                         security_protocol: SASL_SSL
-                        sasl_mechanism: SCRAM-SHA-256
-                        sasl_plain_username: username
-                        sasl_plain_password: password
+                        sasl:
+                            mechanism: SCRAM-SHA-256
+                            username: user
+                            password: password
                 ```
     """
     DEFAULT_CONFIG = {
@@ -142,7 +148,7 @@ class Core:
             content = f.read()
             config = yaml.safe_load(content)
 
-        return ClusterConfig(**config)
+        return KafkaClustersConfig(**config)
 
     @property
     def use_sse(self) -> bool:
@@ -171,7 +177,7 @@ class Core:
         """
         return self.config['clusters'].keys() if 'clusters' in self.config else []
 
-    def get_cluster_config(self, cluster_name: str) -> ClusterConfig:
+    def get_cluster_config(self, cluster_name: str) -> KafkaClusterConfig:
         """Get the configuration for a specific cluster.
 
         Args:
@@ -199,12 +205,12 @@ class Core:
             kafka_config = dict(
                 bootstrap_servers=config.bootstrap_servers,
                 security_protocol=config.security_protocol,
-                sasl_mechanism=config.sasl_mechanism,
-                sasl_plain_username=config.sasl_plain_username,
-                sasl_plain_password=config.sasl_plain_password,
-                ssl_cafile=config.ssl.ca_file,
+                ssl_cafile=config.ssl.cafile,
                 ssl_certfile=config.ssl.certfile,
                 ssl_keyfile=config.ssl.keyfile,
+                sasl_mechanism=config.sasl.mechanism,
+                sasl_plain_username=config.sasl.username,
+                sasl_plain_password=config.sasl.password,
             )
             self._kafka_admin_clients[cluster_name] = KafkaAdminClient(**kafka_config)
 
