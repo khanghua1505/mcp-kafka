@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 
 from mcp_kafka.core import Core, CoreManager
 from mcp_kafka.tools import (
+    list_clusters,
     describe_cluster,
     describe_broker,
     create_topic,
@@ -44,6 +45,7 @@ async def server_lifespan(mcp: FastMCP):
 mcp = FastMCP(name='mcp-kafka', lifespan=server_lifespan)
 
 # Register tools
+mcp.tool(name='list_clusters')(list_clusters)
 mcp.tool(name='describe_cluster')(describe_cluster)
 mcp.tool(name='describe_broker')(describe_broker)
 mcp.tool(name='create_topic')(create_topic)

@@ -9,7 +9,23 @@ from mcp_kafka.core import CoreManager
 from mcp_kafka.kafka import KafkaCluster, KafkaTopic, KafkaConsumer
 
 
-async def describe_cluster(ctx: Context):
+def list_clusters(ctx: Context):
+    """List all Kafka clusters.
+
+    ## Usage
+
+    List all Kafka clusters.
+
+    Returns:
+        A list of cluster names.
+    """
+    core = CoreManager.get_core()
+    return {
+        'data': core.clusters,
+    }
+
+
+async def describe_cluster(ctx: Context, cluster_name: str):
     """Fetch cluster-wide metadata such as the list of brokers, the controller ID, and the cluster ID.
 
     ## Usage
@@ -18,11 +34,12 @@ async def describe_cluster(ctx: Context):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to describe.
 
     Returns:
         A dictionary containing the cluster metadata.
     """
-    kafka_cluster = KafkaCluster(CoreManager.get_core())
+    kafka_cluster = KafkaCluster(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_cluster.describe_cluster()
@@ -40,7 +57,7 @@ async def describe_cluster(ctx: Context):
         }
 
 
-async def describe_broker(ctx: Context, broker_id: str):
+async def describe_broker(ctx: Context, cluster_name: str, broker_id: str):
     """Fetch metadata for the specified broker.
 
     ## Usage
@@ -49,12 +66,13 @@ async def describe_broker(ctx: Context, broker_id: str):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to describe.
         broker_id (str): The ID of the broker to describe.
 
     Returns:
         A dictionary containing the broker metadata.
     """
-    kafka_cluster = KafkaCluster(CoreManager.get_core())
+    kafka_cluster = KafkaCluster(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_cluster.describe_broker(broker_id)
@@ -74,6 +92,7 @@ async def describe_broker(ctx: Context, broker_id: str):
 
 async def create_topic(
     ctx: Context,
+    cluster_name: str,
     name: str,
     num_partitions: int,
     replication_factor: int,
@@ -100,6 +119,7 @@ async def create_topic(
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to create the topic in.
         name (str): The name of the topic to create.
         num_partitions (int): The number of partitions for the topic. Defaults to 3.
         replication_factor (int): The replication factor for the topic. Defaults to 3.
@@ -142,7 +162,7 @@ async def create_topic(
                 segment.ms
                 unclean.leader.election.enable
     """
-    kafka_topic = KafkaTopic(CoreManager.get_core())
+    kafka_topic = KafkaTopic(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_topic.create_topic(
@@ -166,7 +186,7 @@ async def create_topic(
         }
 
 
-async def list_topics(ctx: Context):
+async def list_topics(ctx: Context, cluster_name: str):
     """List all topics in the Kafka cluster.
 
     ## Usage
@@ -175,11 +195,12 @@ async def list_topics(ctx: Context):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to list topics from.
 
     Returns:
         A list of topic names.
     """
-    kafka_topic = KafkaTopic(CoreManager.get_core())
+    kafka_topic = KafkaTopic(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_topic.list_topics()
@@ -196,7 +217,12 @@ async def list_topics(ctx: Context):
         }
 
 
-async def describe_topics(ctx: Context, topics: List[str], include_topic_configs: bool = False):
+async def describe_topics(
+    ctx: Context,
+    cluster_name: str,
+    topics: List[str],
+    include_topic_configs: bool = False
+):
     """Fetch metadata for the specified topic.
 
     ## Usage
@@ -205,13 +231,14 @@ async def describe_topics(ctx: Context, topics: List[str], include_topic_configs
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to describe.
         topics: List of topics to describe.
         include_topic_configs (bool): If True, includes topic configurations in the response.
 
     Returns:
         A dictionary containing the topic descriptions.
     """
-    kafka_topic = KafkaTopic(CoreManager.get_core())
+    kafka_topic = KafkaTopic(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_topic.describe_topics(topics, include_topic_configs)
@@ -229,7 +256,7 @@ async def describe_topics(ctx: Context, topics: List[str], include_topic_configs
         }
 
 
-async def update_topic(ctx: Context, topic: str, configs: dict):
+async def update_topic(ctx: Context, cluster_name: str, topic: str, configs: dict):
     """Update the specified topic.
 
     ## Usage
@@ -238,10 +265,11 @@ async def update_topic(ctx: Context, topic: str, configs: dict):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to update the topic in.
         topic (str): The name of the topic to update.
         configs (dict): A dictionary of configurations to update for the topic.
     """
-    kafka_topic = KafkaTopic(CoreManager.get_core())
+    kafka_topic = KafkaTopic(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_topic.alter_topic(topic, configs)
@@ -259,7 +287,7 @@ async def update_topic(ctx: Context, topic: str, configs: dict):
         }
 
 
-async def delete_topic(ctx: Context, topic: str):
+async def delete_topic(ctx: Context, cluster_name: str, topic: str):
     """Delete the specified topic.
 
     ## Usage
@@ -268,9 +296,10 @@ async def delete_topic(ctx: Context, topic: str):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to delete the topic from.
         topic (str): The name of the topic to delete.
     """
-    kafka_topic = KafkaTopic(CoreManager.get_core())
+    kafka_topic = KafkaTopic(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_topic.delete_topics([topic])
@@ -288,7 +317,7 @@ async def delete_topic(ctx: Context, topic: str):
         }
 
 
-async def list_consumer_groups(ctx: Context, broker_ids=None):
+async def list_consumer_groups(ctx: Context, cluster_name: str, broker_ids=None):
     """List all consumer groups known to the cluster.
 
     ## Usage
@@ -297,13 +326,14 @@ async def list_consumer_groups(ctx: Context, broker_ids=None):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to list consumer groups from.
         broker_ids ([int], optional): A list of broker node_ids to query for consumer groups.
             If not set, will query all brokers in the cluster.
 
     Returns:
         A list of consumer groups.
     """
-    kafka_cluster = KafkaConsumer(CoreManager.get_core())
+    kafka_cluster = KafkaConsumer(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_cluster.list_consumer_groups(broker_ids=broker_ids)
@@ -321,7 +351,7 @@ async def list_consumer_groups(ctx: Context, broker_ids=None):
         }
 
 
-async def list_consumer_group_offsets(ctx: Context, group_id: str):
+async def list_consumer_group_offsets(ctx: Context, cluster_name: str, group_id: str):
     """List all consumer group offsets for a given consumer group.
 
     ## Usage
@@ -330,12 +360,13 @@ async def list_consumer_group_offsets(ctx: Context, group_id: str):
 
     Arguments:
         ctx: MCP context
+        cluster_name (str): The name of the cluster to list consumer group offsets from.
         group_id (str): The ID of the consumer group to list offsets for.
 
     Returns:
         A dictionary containing the consumer group offsets.
     """
-    kafka_cluster = KafkaConsumer(CoreManager.get_core())
+    kafka_cluster = KafkaConsumer(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_cluster.list_consumer_group_offsets(group_id)
@@ -353,7 +384,7 @@ async def list_consumer_group_offsets(ctx: Context, group_id: str):
         }
 
 
-async def describe_consumer_groups(ctx: Context, group_ids: List[str] = None):
+async def describe_consumer_groups(ctx: Context, cluster_name: str, group_ids: List[str] = None):
     """Describe a list of consumer groups.
 
     ## Usage
@@ -367,7 +398,7 @@ async def describe_consumer_groups(ctx: Context, group_ids: List[str] = None):
     Returns:
         A dictionary containing the consumer group description.
     """
-    kafka_cluster = KafkaConsumer(CoreManager.get_core())
+    kafka_cluster = KafkaConsumer(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_cluster.describe_consumer_groups(group_ids)
@@ -385,7 +416,7 @@ async def describe_consumer_groups(ctx: Context, group_ids: List[str] = None):
         }
 
 
-async def delete_consumer_group(ctx: Context, group_id: str):
+async def delete_consumer_group(ctx: Context, cluster_name: str, group_id: str):
     """Delete a consumer group.
 
     ## Usage
@@ -399,7 +430,7 @@ async def delete_consumer_group(ctx: Context, group_id: str):
     Returns:
         A dictionary containing the result of the deletion.
     """
-    kafka_cluster = KafkaConsumer(CoreManager.get_core())
+    kafka_cluster = KafkaConsumer(CoreManager.get_core(), cluster_name)
 
     try:
         response = kafka_cluster.delete_consumer_group(group_id)

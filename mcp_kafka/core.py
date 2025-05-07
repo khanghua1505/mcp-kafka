@@ -1,16 +1,57 @@
 """mcp-kafka server core."""
 
-import os
+
 import argparse
 import copy
-import configparser
-import subprocess
-import shutil
+from typing import List
 
+import yaml
+from pydantic import BaseModel, Field
 from loguru import logger
 from kafka import KafkaAdminClient
 
-from mcp_kafka.utils.string import parse_value
+
+class SSLConfig(BaseModel):
+    """SSL configuration.
+    Attributes:
+        ca_file (str): Path to the CA file.
+        certfile (str): Path to the certificate file.
+        keyfile (str): Path to the key file.
+    """
+
+    ca_file: str = Field(default=None)
+    certfile: str = Field(default=None)
+    keyfile: str = Field(default=None)
+
+
+class ClusterConfig(BaseModel):
+    """Cluster configuration.
+    Attributes:
+        bootstrap_servers (List[str]): List of bootstrap servers.
+        ssl_cafile (str): Path to the CA file.
+        ssl_certfile (str): Path to the certificate file.
+        ssl_keyfile (str): Path to the key file.
+        security_protocol (str): Security protocol.
+        sasl_mechanism (str): SASL mechanism.
+        sasl_plain_username (str): SASL plain username.
+        sasl_plain_password (str): SASL plain password.
+    """
+
+    bootstrap_servers: List[str] = Field()
+    ssl: SSLConfig = Field(default={})
+    security_protocol: str = Field(default='PLAINTEXT')
+    sasl_mechanism: str = Field(default=None)
+    sasl_plain_username: str = Field(default=None)
+    sasl_plain_password: str = Field(default=None)
+
+
+class KafkaClustersConfig(BaseModel):
+    """Kafka clusters configuration.
+
+    Attributes:
+        clusters (dict[str, ClusterConfig]): Dictionary of cluster configurations.
+    """
+    clusters: dict[str, ClusterConfig] = Field(default={})
 
 
 class Core:
@@ -25,19 +66,26 @@ class Core:
             It just needs to have at least one broker that will respond to a
             Metadata API Request. Default port is 9092. If no servers are
             specified, will default to localhost:9092.
-        client_properties_file: The client properties file config.
+        clusters_config_file: Path to the configuration file for Kafka clusters.
             File format:
-                security.protocol=""            # PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
-                sasl.mechanism=""               # PLAIN, SCRAM-SHA-256, SCRAM-SHA-512
-                sasl.jaas.config=""             # Login config with username/password
-                ssl.truststore.location=""      # JKS file with trusted CA certs (Java only)
-                ssl.truststore.password=""      # Password for truststore
+                ```yaml
+                clusters:
+                    cluster_name:
+                        bootstrap_servers: [host1:port1, host2:port2]
+                        ssl:
+                            ca_file: path/to/ca.pem
+                            certfile: path/to/cert.pem
+                            keyfile: path/to/key.pem
+                        security_protocol: SASL_SSL
+                        sasl_mechanism: SCRAM-SHA-256
+                        sasl_plain_username: username
+                        sasl_plain_password: password
+                ```
     """
     DEFAULT_CONFIG = {
         'use_sse': False,
         'port': 8888,
-        'bootstrap_servers': 'localhost:9092',
-        'client_properties_file': '',
+        'clusters_config_file': '',
     }
 
     def __init__(self, **configs):
@@ -47,11 +95,11 @@ class Core:
             raise KeyError(f"Unrecognized configs: {extra_configs}")
         self.config = copy.copy(self.DEFAULT_CONFIG)
         self.config.update(configs)
-        if self.config['client_properties_file']:
-            client_config = self._parse_client_properties(self.config['client_properties_file'])
-            self.config['client_config'] = client_config
+        if self.config['clusters_config_file']:
+            clusters_config = self._parse_config_file(self.config['clusters_config_file'])
+            self.config['clusters'] = clusters_config.clusters
 
-        self._kafka_admin_client = None
+        self._kafka_admin_clients = {}
 
     @staticmethod
     def from_flags():
@@ -70,95 +118,31 @@ class Core:
                             help='Use SSE transport.')
         parser.add_argument('--port', type=int, default=8888,
                             help='Port to run the server on.')
-        parser.add_argument('--kafka-bootstrap-servers', type=str,
-                            default='localhost:9092',  help='The Kafka to connect to.')
-        parser.add_argument('--kafka-client-properties', type=str,
-                            default='', help='Include client properties configuration')
+        parser.add_argument('--clusters-config', type=str, help='Configuration file path.')
         args = parser.parse_args()
 
         core = Core(
             use_sse=args.sse,
             port=args.port,
-            bootstrap_servers=args.kafka_bootstrap_servers,
-            client_properties_file=args.kafka_client_properties
+            clusters_config_file=args.clusters_config,
         )
 
         return core
 
-    def _parse_client_properties(self, file_path):
+    def _parse_config_file(self, file_path):
+        """Parse the configuration file.
+
+        Args:
+            file_path (str): Path to the configuration file.
+
+        Returns:
+            dict: Parsed configuration.
+        """
         with open(file_path, 'r', encoding='utf-8') as f:
-            content = '[client]\n' + f.read()
+            content = f.read()
+            config = yaml.safe_load(content)
 
-        config = configparser.ConfigParser()
-        config.read_string(content)
-        config = config['client']
-
-        client_config = {}
-
-        if 'security.protocol' in config:
-            client_config['security_protocol'] = config['security.protocol']
-        if 'sasl.mechanism' in config:
-            client_config['sasl_mechanism'] = config['sasl.mechanism']
-        if 'sasl.jaas.config' in config:
-            jaas = config['sasl.jaas.config']
-            username = parse_value('username', jaas)
-            if username:
-                client_config['sasl_plain_username'] = username
-            password = parse_value('password', jaas)
-            if password:
-                client_config['sasl_plain_password'] = password
-        if 'ssl.truststore.location' in config:
-            ca_dir = '.ca'
-            if os.path.isdir(ca_dir):
-                shutil.rmtree(ca_dir)
-
-            jks_path = config['ssl.truststore.location']
-            jks_password = config.get('ssl.truststore.password', None)
-
-            pem_file_path = self._convert_jks_to_pem(jks_path, jks_password, ca_dir)
-            client_config['ssl_cafile'] = pem_file_path
-        if 'ssl.cafile' in config:
-            client_config['ssl_cafile'] = config['ssl.cafile']
-        if 'ssl.certfile' in config:
-            client_config['ssl_certfile'] = config['ssl.certfile']
-        if 'ssl.keyfile' in config:
-            client_config['ssl_keyfile'] = config['ssl.keyfile']
-
-        return client_config
-
-    def _convert_jks_to_pem(self, jks_path: str, jks_password: str, output_dir: dir):
-        if not os.path.isfile(jks_path):
-            raise FileNotFoundError(f"JKS file is not a file: {jks_path}")
-
-        os.makedirs(output_dir, exist_ok=True)
-        base_name = os.path.splitext(os.path.basename(jks_path))[0]
-        p12_path = os.path.join(output_dir, f"{base_name}.p12")
-        pem_path = os.path.join(output_dir, f"{base_name}_ca.pem")
-
-        subprocess.run([
-            'keytool', '-importkeystore',
-            '-srckeystore', jks_path,
-            '-destkeystore', p12_path,
-            '-srcstoretype', 'JKS',
-            '-deststoretype', 'PKCS12',
-            *([
-                '-srcstorepass', jks_password,
-                '-deststorepass', jks_password,
-            ] if jks_password else [])
-        ], check=True)
-
-        subprocess.run([
-            'openssl', 'pkcs12',
-            '-in', p12_path,
-            '-nokeys',
-            '-out', pem_path,
-            *([
-                '-passin', f"pass:{jks_password}"
-            ] if jks_password else [])
-        ], check=True)
-
-        logger.debug(f"PEM file created: {pem_path}")
-        return pem_path
+        return ClusterConfig(**config)
 
     @property
     def use_sse(self) -> bool:
@@ -179,28 +163,60 @@ class Core:
         return self.config['port']
 
     @property
-    def kafka_admin_client(self) -> KafkaAdminClient:
+    def clusters(self) -> List[str]:
+        """Get the cluster names.
+
+        Returns:
+            List[str]: List of cluster names.
+        """
+        return self.config['clusters'].keys() if 'clusters' in self.config else []
+
+    def get_cluster_config(self, cluster_name: str) -> ClusterConfig:
+        """Get the configuration for a specific cluster.
+
+        Args:
+            cluster_name (str): The name of the cluster.
+
+        Returns:
+            ClusterConfig: The configuration for the specified cluster.
+        """
+        if 'clusters' not in self.config:
+            raise KeyError('No clusters found in the configuration.')
+
+        if cluster_name not in self.config['clusters']:
+            raise KeyError(f"Cluster '{cluster_name}' not found in the configuration.")
+
+        return self.config['clusters'][cluster_name]
+
+    def kafka_admin_client(self, cluster_name: str) -> KafkaAdminClient:
         """Get the Kafka admin client.
 
         Returns:
             The Kafka admin client.
         """
-        if self._kafka_admin_client is None:
-            configs = dict(
-                bootstrap_servers=self.config['bootstrap_servers'],
-                client_id='mcp-kafka-admin',
-                **self.config.get('client_config', {}),
+        if cluster_name not in self._kafka_admin_clients:
+            config = self.get_cluster_config(cluster_name)
+            kafka_config = dict(
+                bootstrap_servers=config.bootstrap_servers,
+                security_protocol=config.security_protocol,
+                sasl_mechanism=config.sasl_mechanism,
+                sasl_plain_username=config.sasl_plain_username,
+                sasl_plain_password=config.sasl_plain_password,
+                ssl_cafile=config.ssl.ca_file,
+                ssl_certfile=config.ssl.certfile,
+                ssl_keyfile=config.ssl.keyfile,
             )
+            self._kafka_admin_clients[cluster_name] = KafkaAdminClient(**kafka_config)
 
-            self._kafka_admin_client = KafkaAdminClient(**configs)
-
-        return self._kafka_admin_client
+        return self._kafka_admin_clients[cluster_name]
 
     def close(self):
         """Graceful shutdown for MCP Core server."""
-        if self._kafka_admin_client:
-            self._kafka_admin_client.close()
-            self._kafka_admin_client = None
+        for cluster_name, admin_client in self._kafka_admin_clients.items():
+            logger.debug(f"Closing Kafka admin client for cluster: {cluster_name}")
+            admin_client.close()
+
+        self._kafka_admin_clients.clear()
 
 
 class CoreManager:
