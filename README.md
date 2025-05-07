@@ -41,23 +41,26 @@ The mcp-kafka server provides the following Kafka operations:
           "/path/to/mcp-kafka",
           "run",
           "server.py",
-          "--kafka-bootstrap-servers",
-          "localhost:9092",
           // optional
-          "--kafka-client-properties",
-          "/path/to/client.properties"
+          "--clusters-config",
+          "/path/to/clusters.yaml"
         ]
       }
     }
   }
   ```
 
-  ```ini client.properties
-  security.protocol=SASL_SSL
-  sasl.mechanism=PLAIN
-  sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required \
-    username="client" \
-    password="client-secret";
-  ssl.truststore.location=/path/to/truststore.jks
-  ssl.truststore.password=password
+  ```yaml
+  clusters:
+    playground:
+      description: "Playground cluster"
+      bootstrap_servers: localhost:29092
+      ssl:
+        cafile: /Users/khanghua/Workspace/projects/mcp-kafka/.ca/kafka.conduktor.truststore_ca.pem
+      security_protocol: SASL_SSL
+      sasl:
+        mechanism: PLAIN
+        username: "client"
+        password: "client-secret"
+
   ```

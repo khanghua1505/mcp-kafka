@@ -9,4 +9,5 @@ dependencies = [
     "kafka-python>=2.1.5",
     "loguru>=0.7.3",
     "mcp[cli]>=1.6.0",
+    "pyyaml>=6.0.2",
 ]
